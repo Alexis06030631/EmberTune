@@ -10,7 +10,7 @@
     "lint": "eslint -c ./eslint.config.js \"./src*/**/*.{js,cjs,mjs,vue}\"",
     "format": "prettier --write \"**/*.{js,vue,scss,html,md,json}\" --ignore-path .gitignore",
     "test": "echo \"No test specified\" && exit 0",
-    "dev": "quasar dev",
+    "dev": "yarn quasar dev -m electron",
     "build": "quasar build",
     "postinstall": "quasar prepare",
     "build:electron": "quasar build -m electron --publish never"
@@ -19,13 +19,13 @@
     "@quasar/extras": "^1.16.4",
     "discord-rpc": "^4.0.1",
     "dotenv": "^16.4.7",
+    "node-cache": "^5.1.2",
     "pinia": "^3.0.1",
     "pinia-plugin-persistedstate": "^4.2.0",
     "quasar": "^2.16.0",
     "vue": "^3.4.18",
     "vue-i18n": "^9.0.0",
     "vue-router": "^4.0.0",
-    "node-cache": "^5.1.2",
     "ytmusic_api_unofficial": "^2.0.25"
   },
   "devDependencies": {

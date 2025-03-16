@@ -60,6 +60,9 @@
   "home": {
     "tagline": "Your personal music companion",
     "trending": "Trending Music",
+    "trendingSelect": {
+      "title": "Select a country"
+    },
     "buttons": {
       "createPlaylists": "Create custom playlists",
       "configureApp": "Configure EmberTune",
