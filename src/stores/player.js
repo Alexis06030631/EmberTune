@@ -11,6 +11,8 @@ export const usePlayerStore = defineStore('player', {
     currentIndex: -1,
     audio: new Audio(),
     volume: 1,
+    replayMode: 'disabled',
+    isShuffled: false,
   }),
 
   getters: {
@@ -19,24 +21,30 @@ export const usePlayerStore = defineStore('player', {
   },
 
   actions: {
-    metadata () {
+    metadata() {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: this.currentTrack.title || 'Unknown',
         artist: this.currentTrack.artist || 'Unknown',
-        artwork: [{ src: this.currentTrack.thumbnails[this.currentTrack.thumbnails.length-1].url, sizes: '512x512', type: 'image/png' }]
+        artwork: [
+          {
+            src: this.currentTrack.thumbnails[this.currentTrack.thumbnails.length - 1].url,
+            sizes: '512x512',
+            type: 'image/png',
+          },
+        ],
       })
-      navigator.mediaSession.setActionHandler('play', function() {
+      navigator.mediaSession.setActionHandler('play', function () {
         usePlayerStore().togglePlayPause()
-      });
-      navigator.mediaSession.setActionHandler('pause', function() {
+      })
+      navigator.mediaSession.setActionHandler('pause', function () {
         usePlayerStore().togglePlayPause()
-      });
-      navigator.mediaSession.setActionHandler('nexttrack', function() {
+      })
+      navigator.mediaSession.setActionHandler('nexttrack', function () {
         usePlayerStore().next()
-      });
-      navigator.mediaSession.setActionHandler("previoustrack", () => {
+      })
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
         usePlayerStore().previous()
-      });
+      })
     },
     async updateDiscordPresence() {
       this.metadata()
@@ -51,7 +59,7 @@ export const usePlayerStore = defineStore('player', {
         largeImageText: 'EmberTune',
         smallImageKey: 'embertune_logo',
         smallImageText: this.isPlaying ? 'Playing' : 'Paused',
-        startTimestamp: Date.now(),
+        startTimestamp: this.isPlaying ? Date.now() : undefined,
         buttons: [
           {
             label: 'Listen on EmberTune',
@@ -64,10 +72,6 @@ export const usePlayerStore = defineStore('player', {
         ],
       }
 
-      if (this.isPlaying) {
-        activity.startTimestamp = Date.now()
-      }
-
       await window.discord.updatePresence(activity)
     },
     async play(music, newPlay = false) {
@@ -77,9 +81,11 @@ export const usePlayerStore = defineStore('player', {
           this.currentIndex = -1
         }
         let songDetails
-        if(typeof music === 'object'){
-          songDetails = music
-        }else songDetails = await window.youtube.getSong(music)
+        if (typeof music === 'object') {
+          songDetails = await window.youtube.getSong(music.id)
+        } else {
+          songDetails = await window.youtube.getSong(music)
+        }
 
         // Get song details
         const downloadDetails = await window.youtube.download(songDetails.id)
@@ -119,7 +125,13 @@ export const usePlayerStore = defineStore('player', {
 
         // Handle audio ending
         this.audio.onended = () => {
-          if (this.hasNext) {
+          if (this.replayMode === 'song') {
+            this.seekTo(0)
+            this.audio.play()
+          } else if (this.hasNext) {
+            this.next()
+          } else if (this.replayMode === 'playlist' && this.queue.length > 0) {
+            this.currentIndex = -1
             this.next()
           } else {
             this.isPlaying = false
@@ -174,7 +186,19 @@ export const usePlayerStore = defineStore('player', {
 
     async next() {
       if (!this.hasNext) return
-      this.currentIndex++
+      if (this.isShuffled) {
+        const remainingIndices = Array.from({ length: this.queue.length }, (_, i) => i).filter(
+          (i) => i !== this.currentIndex,
+        )
+        if (remainingIndices.length > 0) {
+          const randomIndex = Math.floor(Math.random() * remainingIndices.length)
+          this.currentIndex = remainingIndices[randomIndex]
+        } else {
+          this.currentIndex++
+        }
+      } else {
+        this.currentIndex++
+      }
       const nextTrack = this.queue[this.currentIndex]
       await this.play(nextTrack)
       await this.updateDiscordPresence()
@@ -234,6 +258,16 @@ export const usePlayerStore = defineStore('player', {
       this.queue = songs
 
       await this.play(this.queue[0])
+    },
+
+    toggleReplayMode() {
+      const modes = ['disabled', 'song', 'playlist']
+      const currentIndex = modes.indexOf(this.replayMode)
+      this.replayMode = modes[(currentIndex + 1) % modes.length]
+    },
+
+    toggleShuffle() {
+      this.isShuffled = !this.isShuffled
     },
   },
 })

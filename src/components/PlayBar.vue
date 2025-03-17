@@ -1,6 +1,6 @@
 <script setup>
 import { usePlayerStore } from '../stores/player'
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import AddToPlaylistDialog from './AddToPlaylistDialog.vue'
 import { usePlaylistStore } from '../stores/playlist'
@@ -14,19 +14,13 @@ const showVolumeSlider = ref(false)
 const showAddToPlaylistDialog = ref(false)
 const router = useRouter()
 const playlistStore = usePlaylistStore()
+const imageLoading = ref(true)
 
 const isLiked = computed(() => {
   if (!player.currentTrack) return false
   const likedPlaylist = playlistStore.playlists.find((p) => p.id === 'liked-songs')
   return likedPlaylist?.songs.some((song) => song.id === player.currentTrack.id) || false
 })
-
-const updateTime = () => {
-  if (player.audio) {
-    currentTime.value = Math.floor(player.audio.currentTime)
-    duration.value = Math.floor(player.audio.duration)
-  }
-}
 
 const handleSeek = () => {
   player.seekTo(currentTime.value)
@@ -71,63 +65,31 @@ const toggleVolumeSlider = () => {
   showVolumeSlider.value = !showVolumeSlider.value
 }
 
-// Add event listeners to sync playback state when controlled by external media keys
-const syncPlaybackState = () => {
+const updateTimeAndState = () => {
   if (player.audio) {
-    player.isPlaying = !player.audio.paused
-  }
-}
-
-// Set up audio event listeners
-const setupAudioListeners = (audio) => {
-  if (audio) {
-    audio.addEventListener('play', syncPlaybackState)
-    audio.addEventListener('pause', syncPlaybackState)
-  }
-}
-
-// Remove audio event listeners
-const cleanupAudioListeners = (audio) => {
-  if (audio) {
-    audio.removeEventListener('play', syncPlaybackState)
-    audio.removeEventListener('pause', syncPlaybackState)
+    currentTime.value = Math.floor(player.audio.currentTime)
+    duration.value = Math.floor(player.audio.duration) || 0
   }
 }
 
 let timeUpdateInterval
-let previousAudio = null
-
-// Watch for audio changes
-watch(
-  () => player.audio,
-  (newAudio, oldAudio) => {
-    if (oldAudio) {
-      cleanupAudioListeners(oldAudio)
-    }
-    if (newAudio) {
-      setupAudioListeners(newAudio)
-      previousAudio = newAudio
-    }
-  },
-  { immediate: true },
-)
 
 onMounted(() => {
-  timeUpdateInterval = setInterval(updateTime, 1000)
-
-  if (player.audio) {
-    setupAudioListeners(player.audio)
-    previousAudio = player.audio
-  }
+  timeUpdateInterval = setInterval(updateTimeAndState, 1000)
 })
 
 onUnmounted(() => {
-  if (timeUpdateInterval) {
-    clearInterval(timeUpdateInterval)
-  }
+  clearInterval(timeUpdateInterval)
+})
 
-  if (previousAudio) {
-    cleanupAudioListeners(previousAudio)
+const replayModeIcon = computed(() => {
+  switch (player.replayMode) {
+    case 'song':
+      return 'mdi-repeat-once'
+    case 'playlist':
+      return 'mdi-repeat'
+    default:
+      return 'mdi-repeat-off'
   }
 })
 </script>
@@ -137,15 +99,21 @@ onUnmounted(() => {
     <div class="main-content">
       <!-- Left section with song info -->
       <div class="song-info">
-        <img
-          :src="
-            player.currentTrack.thumbnails.reduce((prev, current) =>
-              prev.width > current.width ? prev : current,
-            ).url
-          "
-          alt="Album Art"
-          class="album-art"
-        />
+        <div class="album-art-container">
+          <div v-if="imageLoading" class="artwork-loader"></div>
+          <img
+            v-show="!imageLoading"
+            :src="
+              player.currentTrack.thumbnails.reduce((prev, current) =>
+                prev.width > current.width ? prev : current,
+              ).url
+            "
+            alt="Album Art"
+            class="album-art"
+            @error="imageLoading = true"
+            @load="imageLoading = false"
+          />
+        </div>
         <div class="track-details">
           <div class="title">{{ player.currentTrack.title }}</div>
           <div class="artist">{{ player.currentTrack.artist }}</div>
@@ -154,6 +122,16 @@ onUnmounted(() => {
 
       <!-- Center section with controls -->
       <div class="controls">
+        <q-icon
+          name="mdi-shuffle"
+          size="20px"
+          :class="{
+            clickable: true,
+            'text-accent': player.isShuffled,
+            'text-grey-6': !player.isShuffled,
+          }"
+          @click="player.toggleShuffle()"
+        />
         <q-icon
           name="mdi-skip-previous"
           size="30px"
@@ -171,6 +149,16 @@ onUnmounted(() => {
           size="30px"
           :class="player.hasNext? 'clickable':'disabled'"
           @click="player.hasNext && player.next()"
+        />
+        <q-icon
+          :name="replayModeIcon"
+          size="20px"
+          :class="{
+            clickable: true,
+            'text-accent': player.replayMode !== 'disabled',
+            'text-grey-6': player.replayMode === 'disabled',
+          }"
+          @click="player.toggleReplayMode()"
         />
       </div>
 
@@ -191,7 +179,6 @@ onUnmounted(() => {
                 v-model="volume"
                 min="0"
                 max="100"
-                orient="vertical"
                 class="volume-slider"
                 @input="updateVolume"
               />
@@ -242,12 +229,15 @@ onUnmounted(() => {
           type="range"
           v-model="currentTime"
           :min="0"
-          :max="duration"
+          :max="duration || 1"
           :step="1"
-          @change="handleSeek"
+          @input="handleSeek"
           class="progress-slider"
         />
-        <div class="progress-bar" :style="{ width: `${(currentTime / duration) * 100}%` }"></div>
+        <div
+          class="progress-bar"
+          :style="{ width: `${(currentTime / (duration || 1)) * 100}%` }"
+        ></div>
       </div>
       <div class="time">{{ formatTime(duration) }}</div>
     </div>
@@ -259,7 +249,7 @@ onUnmounted(() => {
         id: player.currentTrack?.id,
         title: player.currentTrack?.title,
         artist: player.currentTrack?.artist,
-        thumbnails: player.currentTrack?.thumbnail,
+        thumbnails: player.currentTrack?.thumbnails,
       }"
     />
   </div>
@@ -294,6 +284,22 @@ onUnmounted(() => {
   gap: 12px;
   min-width: 0;
   max-width: 33%;
+
+  .album-art-container {
+    position: relative;
+    width: 60px;
+    height: 60px;
+    flex-shrink: 0;
+
+    .artwork-loader {
+      width: 100%;
+      height: 100%;
+      border-radius: 15px;
+      background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+      background-size: 200% 100%;
+      animation: loading 1s infinite;
+    }
+  }
 
   .album-art {
     width: 60px;
@@ -367,7 +373,8 @@ onUnmounted(() => {
 
         .volume-slider {
           position: absolute;
-          -webkit-appearance: slider-vertical;
+          writing-mode: vertical-lr;
+          direction: rtl;
           width: 4px;
           height: 80px;
           background: var(--tertiary-bg);
@@ -454,5 +461,14 @@ onUnmounted(() => {
 
 .text-accent {
   color: var(--accent-color);
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 </style>
