@@ -46,7 +46,7 @@ export const usePlayerStore = defineStore('player', {
         usePlayerStore().previous()
       })
     },
-    async updateDiscordPresence() {
+    updateDiscordPresence() {
       this.metadata()
       const settings = useSettingsStore()
       if (!settings.discordRich || !this.currentTrack) return
@@ -72,7 +72,7 @@ export const usePlayerStore = defineStore('player', {
         ],
       }
 
-      await window.discord.updatePresence(activity)
+      window.discord.updatePresence(activity)
     },
     async play(music, newPlay = false) {
       try {
@@ -121,7 +121,7 @@ export const usePlayerStore = defineStore('player', {
         this.isPlaying = true
 
         // Update Discord presence
-        await this.updateDiscordPresence()
+        this.updateDiscordPresence()
 
         // Handle audio ending
         this.audio.onended = () => {
